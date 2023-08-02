@@ -1,0 +1,63 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Asterisk::AGI;
+use DBI;
+
+# Create a new AGI object
+my $agi = new Asterisk::AGI;
+
+# Read MySQL credentials from the configuration file
+my $config_file = '/etc/astguiclient.conf';
+open(my $conf, $config_file) || die "Can't open $config_file: $!\n";
+my @conf = <$conf>;
+close($conf);
+
+my %config;
+foreach (@conf) {
+    chomp;
+    my ($key, $value) = split(/\s*=>\s*/, $_, 2);
+    $key =~ s/\s*//g;   # Remove any whitespace from the key
+    next unless defined $key and defined $value; # Skip empty lines or lines with unexpected formatting
+    $config{$key} = $value;
+}
+
+my $dbhost = $config{'VARDB_server'};
+my $db = $config{'VARDB_database'};
+my $dbuser = $config{'VARDB_user'};
+my $dbpass = $config{'VARDB_pass'};
+my $dbport = $config{'VARDB_port'} || '3306'; # Default to 3306 if VARDB_port is not provided in the config
+
+# DB connect
+my $dbh = DBI->connect("DBI:mysql:database=$db;host=$dbhost;port=$dbport", $dbuser, $dbpass) or die "Database connection error: $DBI::errstr";
+# End DB connect
+
+my $phone = $ARGV[0];
+my $history = $ARGV[1];
+# Calculate the time for history hours ago in MySQL format (YYYY-MM-DD HH:MM:SS)
+#my $time_x_hours_ago = $dbh->quote("DATE_SUB(NOW(), INTERVAL $history HOUR)");
+
+my $query = "SELECT modify_date, user FROM vicidial_list WHERE phone_number = ? AND modify_date > now() - interval $history hour ORDER BY modify_date DESC LIMIT 1;";
+#where order_date > now() - interval 24 hour;
+my $result = $dbh->prepare($query);
+$result->execute($phone);
+#$result->execute($history);
+
+my $agentid = ""; # Initialize the agent_mobile variable
+my $ingroup = "INBOUND"; # Set the default value for ingroup
+
+if ($result->rows > 0) {
+    my $row = $result->fetchrow_hashref;
+    $agentid = $row->{"user"};
+    $ingroup = "AGENTDIRECT";
+}
+
+$result->finish();
+$dbh->disconnect();
+
+# Set the AGI variables for use in Asterisk dialplan
+$agi->set_variable("agentid", $agentid);
+$agi->set_variable("ingroup", $ingroup);
+
+# Exit the script gracefully
+exit 0;
