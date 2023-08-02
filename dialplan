@@ -1,0 +1,5 @@
+exten => 999888777,1,Answer()
+exten => 999888777,n,AGI(stickyagent.agi,${CALLERID(num)},4)
+exten => 999888777,n,NoOp(my ------------- ${agentid} ----- ${ingroup})
+exten => 999888777,n,AGI(agi-VDAD_ALL_inbound.agi,CIDLOOKUP-----LB-----${ingroup}-----60006000-----${CALLERID(num)}-----park----------999-----91----------${agentid})
+exten => 999888777,n,Hangup()
